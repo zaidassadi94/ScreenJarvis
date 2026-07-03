@@ -27,6 +27,13 @@ class Config:
     llm_model: str = "claude-opus-4-8"
     max_llm_frames: int = 14
     llm_image_width: int = 1024
+    sounds: bool = True
+    copy_on_done: str = "claude-prompt"  # claude-prompt | path | off
+    # keys may live in the config file because the menu-bar app is launched
+    # outside any shell and inherits no environment variables
+    openai_api_key: str = ""
+    groq_api_key: str = ""
+    anthropic_api_key: str = ""
     trigger_phrases: list[str] | None = None  # None -> built-in defaults
     extra_trigger_phrases: list[str] = field(default_factory=list)
 
@@ -46,3 +53,18 @@ def load_config() -> Config:
     if env_stt := os.environ.get("SCREENJARVIS_STT"):
         cfg.stt = env_stt
     return cfg
+
+
+_KEY_ENV_VARS = {
+    "openai_api_key": "OPENAI_API_KEY",
+    "groq_api_key": "GROQ_API_KEY",
+    "anthropic_api_key": "ANTHROPIC_API_KEY",
+}
+
+
+def apply_api_keys(cfg: Config) -> None:
+    """Export config-file keys into the environment; real env vars still win."""
+    for attr, env in _KEY_ENV_VARS.items():
+        value = getattr(cfg, attr)
+        if value and not os.environ.get(env):
+            os.environ[env] = value

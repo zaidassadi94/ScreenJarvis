@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from . import session as S
-from .config import Config, load_config
+from .config import Config, apply_api_keys, load_config
 
 STT_CHOICES = ["auto", "openai", "groq", "json"]
 
@@ -38,12 +38,21 @@ def main(argv: list[str] | None = None) -> int:
     p_last = sub.add_parser("last", help="print the latest session directory")
     p_last.add_argument("--open", action="store_true")
 
+    sub.add_parser("setup", help="interactive setup: API keys, hotkey, preferences")
+
+    p_app = sub.add_parser("app", help="run the menu-bar app (macOS)")
+    p_app.add_argument("--install-login", action="store_true",
+                       help="start ScreenJarvis automatically at login")
+    p_app.add_argument("--uninstall-login", action="store_true")
+
     p_syn = sub.add_parser("synth", help="generate a synthetic session (dev/demo; no mic or screen needed)")
     p_syn.add_argument("--out", type=Path, default=Path("synth-session"))
 
     args = parser.parse_args(argv)
     cfg = load_config()
-    handlers = {"record": cmd_record, "compile": cmd_compile, "last": cmd_last, "synth": cmd_synth}
+    apply_api_keys(cfg)
+    handlers = {"record": cmd_record, "compile": cmd_compile, "last": cmd_last,
+                "setup": cmd_setup, "app": cmd_app, "synth": cmd_synth}
     return handlers[args.command](cfg, args)
 
 
@@ -68,11 +77,9 @@ def cmd_record(cfg: Config, args) -> int:
     except SystemExit:
         raise
     except Exception as exc:
-        raise SystemExit(
-            f"could not start capture: {exc}\n"
-            "On macOS: grant Microphone, Screen Recording, and Accessibility permissions "
-            "to your terminal (System Settings → Privacy & Security), then retry."
-        )
+        from .recorder.capture import PERMISSION_HINT
+
+        raise SystemExit(f"could not start capture: {exc}\n{PERMISSION_HINT}")
     print(f"session: {sdir}")
     if args.no_compile:
         print(f"compile later with: sj compile {sdir}")
@@ -94,6 +101,26 @@ def cmd_last(cfg: Config, args) -> int:
     if args.open and sys.platform == "darwin":
         subprocess.run(["open", str(latest)], check=False)
     return 0
+
+
+def cmd_setup(cfg: Config, args) -> int:
+    from .setup_wizard import run_setup
+
+    return run_setup(cfg)
+
+
+def cmd_app(cfg: Config, args) -> int:
+    if sys.platform != "darwin":
+        raise SystemExit("the menu-bar app is macOS-only; use `sj record` here instead.")
+    from .app.launchagent import install_login_item, uninstall_login_item
+
+    if args.install_login:
+        return install_login_item()
+    if args.uninstall_login:
+        return uninstall_login_item()
+    from .app.menubar import run_app
+
+    return run_app(cfg)
 
 
 def cmd_synth(cfg: Config, args) -> int:
