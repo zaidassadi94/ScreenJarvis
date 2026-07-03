@@ -29,7 +29,7 @@ def test_end_to_end(tmp_path):
     assert result.anchors[1].frame["reason"] == "click"
 
     md = (sdir / "transcript.md").read_text()
-    assert md.startswith("## Session — 2026-07-03 14:22 (36s)")
+    assert md.startswith("## Session — 2026-07-03 14:22 (44s)")
     assert "“look at this”" in md and "“right here”" in md
 
     # figures land right after the sentence that pointed at them

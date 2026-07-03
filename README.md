@@ -40,6 +40,29 @@ claude "Read $(uv run sj last)/transcript.md and help me fix what I describe"
 
 Claude reads the markdown and the figures natively — no hosting, no uploads.
 
+## Smart mode (Claude)
+
+With `ANTHROPIC_API_KEY` set, compiling uses Claude to understand the whole
+session instead of the trigger-phrase heuristics: it reads the timestamped
+transcript, the gesture/click timeline, and screenshots overlaid with your
+cursor's path, then plans the document — cleaned-up prose, which moments
+deserve figures (including references like "the thing in the corner" that
+match no trigger phrase), point vs. region highlights (circle something with
+your cursor and the figure gets a drawn ring around that area), and captions
+that name what's shown.
+
+```sh
+export ANTHROPIC_API_KEY=sk-ant-...
+uv run sj compile last              # auto: smart when a key is set
+uv run sj compile last --basic      # force the offline heuristic mode
+uv run sj compile last --smart      # require the model (still falls back on failure)
+```
+
+Privacy note: smart mode sends the selected screenshots (~a dozen per session)
+and transcript to the Anthropic API. Unset the key or pass `--basic` for a
+fully local compile (cloud STT for transcription is a separate choice). A
+failed smart compile always falls back to basic — a recording is never lost.
+
 ## Recompile
 
 ```sh
@@ -58,6 +81,8 @@ First run will prompt for **Microphone**, **Screen Recording**, and **Accessibil
 ```toml
 sessions_dir = "~/ScreenJarvis/sessions"
 stt = "auto"            # auto | openai | groq
+smart = "auto"          # auto | on | off — Claude understanding pass
+llm_model = "claude-opus-4-8"
 hold_key = "alt_r"
 crop = "none"           # none | region (crop figures around the cursor)
 extra_trigger_phrases = ["this widget", "this dashboard"]

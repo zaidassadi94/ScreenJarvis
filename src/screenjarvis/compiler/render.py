@@ -25,6 +25,25 @@ def _segment_index_for(anchor: Anchor, segments: list[dict]) -> int:
     return min(range(len(segments)), key=lambda idx: abs(segments[idx]["start"] - anchor.word_start))
 
 
+def render_plan_markdown(title: str, paragraphs: list[str], placed_figures: list[tuple[int, str, str]],
+                         *, started: dt.datetime, duration: float) -> str:
+    """placed_figures: (paragraph_index, figure_relpath, caption), pre-numbered order."""
+    by_paragraph: dict[int, list[tuple[int, str, str]]] = {}
+    for n, (para, path, caption) in enumerate(placed_figures, start=1):
+        by_paragraph.setdefault(para, []).append((n, path, caption))
+
+    lines = [f"## {title}", "",
+             f"*{started:%Y-%m-%d %H:%M} · {fmt_duration(duration)}*", ""]
+    for idx, paragraph in enumerate(paragraphs):
+        if paragraph.strip():
+            lines.append(paragraph.strip())
+            lines.append("")
+        for n, path, caption in by_paragraph.get(idx, ()):
+            lines.append(f"![Fig {n} — {caption}]({path})")
+            lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def render_markdown(transcript: dict, anchors: list[Anchor], *,
                     started: dt.datetime, duration: float) -> str:
     segments = transcript["segments"]

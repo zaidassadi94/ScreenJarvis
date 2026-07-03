@@ -9,34 +9,46 @@ plus a decoy ("this week") that must NOT trigger.
 from __future__ import annotations
 
 import json
+import math
 import wave
 from pathlib import Path
 
 from PIL import Image, ImageDraw
 
 MON = {"left": 0, "top": 0, "width": 1440, "height": 900}
-CARD_TARGET = (720, 690)   # where the middle card crosses the container edge
-RULE_TARGET = (320, 514)   # the min-width line in the fake devtools
+CARD_TARGET = (720, 690)     # where the middle card crosses the container edge
+RULE_TARGET = (320, 514)     # the min-width line in the fake devtools
+CIRCLE_CENTER = (300, 520)   # the .price-card rule block the user circles
+CIRCLE_RX, CIRCLE_RY = 150, 130
+CIRCLE_SPAN = (30.5, 33.5)   # two loops
 CLICK_T = 24.6
-DURATION = 36.0
-FPS = 2.0
+DURATION = 44.0
 SCENE_SWITCH_T = 20.0
 
 SEGMENTS = [
     (0.6, 6.2, "We looked into the billing report this week and found a layout bug on the pricing page."),
     (10.4, 16.6, "Look at this — the middle card overflows its container when the toggle is set to annual."),
     (22.4, 28.2, "The problem is the flex rule right here, the min width is fighting the gap."),
-    (30.2, 33.4, "Let's patch it and rerun the visual tests."),
+    # deliberately matches NO trigger phrase: only gestures / an LLM catch it
+    (30.0, 34.6, "And honestly this whole block needs a rethink before we ship it."),
+    (38.0, 41.2, "Let's patch it and rerun the visual tests."),
 ]
 
-# cursor script: (until_t, position) — parked at each spot, lerped between spots
+# the circle parametrisation begins and ends at angle 0 == its rightmost point
+CIRCLE_START = (CIRCLE_CENTER[0] + CIRCLE_RX, CIRCLE_CENTER[1])
+
+# cursor script: (until_t, position) — parked at each spot, lerped between spots;
+# the circling gesture is spliced in over CIRCLE_SPAN (see _cursor_at), with a
+# short rest afterwards so it reads as one gesture, like a real hand would
 CURSOR_PATH = [
     (9.0, (240, 180)),
     (10.0, CARD_TARGET),
     (16.0, CARD_TARGET),
     (22.0, RULE_TARGET),
     (29.0, RULE_TARGET),
-    (36.0, (900, 800)),
+    (30.5, CIRCLE_START),
+    (34.4, CIRCLE_START),
+    (44.0, (900, 800)),
 ]
 
 
@@ -52,6 +64,11 @@ def _words_from_segments() -> list[dict]:
 
 
 def _cursor_at(t: float) -> tuple[int, int]:
+    if CIRCLE_SPAN[0] <= t <= CIRCLE_SPAN[1]:  # two counterclockwise loops
+        frac = (t - CIRCLE_SPAN[0]) / (CIRCLE_SPAN[1] - CIRCLE_SPAN[0])
+        angle = frac * 2 * 2 * math.pi
+        return (round(CIRCLE_CENTER[0] + CIRCLE_RX * math.cos(angle)),
+                round(CIRCLE_CENTER[1] + CIRCLE_RY * math.sin(angle)))
     prev_t, prev_pos = 0.0, CURSOR_PATH[0][1]
     for until, pos in CURSOR_PATH:
         if t <= until:
@@ -109,7 +126,7 @@ def make_synthetic_session(session_dir: Path) -> Path:
     while t <= DURATION:
         x, y = _cursor_at(t)
         events.append({"t": round(t, 3), "type": "cursor", "x": x, "y": y})
-        t += 0.2
+        t += 0.1
 
     frame_times = [(round(t / 10, 3), "tick") for t in range(2, int(DURATION * 10), 5)]
     frame_times.append((CLICK_T + 0.03, "click"))

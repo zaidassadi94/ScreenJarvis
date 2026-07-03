@@ -63,7 +63,8 @@ class Anchor:
     frame: dict | None                # the chosen frame event
     clicked: bool
     figure: str | None = None         # set by the compile step
-    ring: tuple[float, float] | None = None  # ring centre in figure pixels
+    ring: tuple[float, float] | None = None  # highlight centre in figure pixels
+    region: tuple[int, int, int, int] | None = None  # set when a circle gesture upgraded it
 
 
 def find_trigger_spans(words: list[dict], phrases: list[str]) -> list[tuple[int, int, str]]:

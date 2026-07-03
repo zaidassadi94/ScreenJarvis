@@ -23,6 +23,10 @@ class Config:
     hold_key: str = "alt_r"
     max_secs: float = 600.0
     open_after: bool = True
+    smart: str = "auto"  # auto (use Claude when ANTHROPIC_API_KEY is set) | on | off
+    llm_model: str = "claude-opus-4-8"
+    max_llm_frames: int = 14
+    llm_image_width: int = 1024
     trigger_phrases: list[str] | None = None  # None -> built-in defaults
     extra_trigger_phrases: list[str] = field(default_factory=list)
 

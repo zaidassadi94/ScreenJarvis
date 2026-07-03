@@ -101,6 +101,26 @@ Design bias: **over-capture, then curate.** An extra figure is a two-second dele
 
 ## 4. Key technical decisions
 
+### Capture is dumb; understanding is swappable (the load-bearing invariant)
+
+The recorder never interprets anything live — no phrase triggers a screenshot,
+no click is required. It captures continuously (frames ~2 fps, cursor 15 Hz,
+clicks, active app) and all meaning is extracted afterwards from the complete
+recording. Because the bundle preserves everything, the *interpreter* can be
+upgraded without touching capture. Two interpreters exist:
+
+- **smart** (default when `ANTHROPIC_API_KEY` is set): Claude reads the whole
+  session — timestamped transcript, gesture/click timeline, and frames with
+  the cursor's recent path drawn on them — and plans the document: cleaned
+  prose, figure moments (including references no phrase list would catch),
+  point vs. region highlights, captions. The 15 Hz cursor log is why no video
+  file is needed: a circled area is a loop of coordinates, recoverable at
+  higher fidelity than 2 fps pixels, and renderable onto a still frame as a
+  trail so a vision model can see the gesture.
+- **basic**: the deterministic heuristic below — free, offline, private, and
+  the automatic fallback whenever smart mode is off or fails. A circle gesture
+  near an anchor upgrades its point ring to a region highlight even here.
+
 ### Speech-to-text — needs word-level timestamps (hard requirement)
 
 Alignment of "look at **this**" to a cursor position lives or dies on word timing. (Note: Wispr Flow itself has no public API — what we actually want is the Whisper family or a streaming STT vendor.)
@@ -114,12 +134,16 @@ Alignment of "look at **this**" to a cursor position lives or dies on word timin
 
 **Recommendation:** cloud Whisper (OpenAI or Groq) for the spike — zero tuning, pennies — with a local backend added early as the privacy option. Streaming STT is *not* needed in v1 because anchors are resolved after the fact from the frame buffer; nothing has to trigger in real time.
 
-### LLM pass (Phase 2) — Claude
+### The Claude understanding pass — built
 
-- **Cleanup:** raw speech → readable prose (remove fillers, false starts; keep meaning and the trigger sentences intact) — the Wispr-style polish.
-- **Captions:** send the annotated frame + cursor coords to Claude vision → "Fig 2 — devtools, `.price-card` rule highlighted" instead of "Fig 2". Also alt text.
-- **Judgment:** a transcript-level pass that catches references the lexical list missed ("the thing in the corner is wrong") and proposes anchors for them.
-- Model: `claude-opus-4-8` while iterating on prompts; downshift cleanup to Haiku 4.5 once stable. Cloud vision on frames is **opt-in** (screen contents are sensitive) — cleanup-only mode sends text only.
+Implemented in `compiler/understand.py` (+ `gestures.py`, `keyframes.py`):
+gesture detection (circles/wiggles/dwells) from the cursor log by pure
+geometry; frame shortlisting (scene changes + click/gesture/phrase moments,
+capped at ~14); trail-overlaid frames so the model sees motion; one
+structured-output call that returns title, cleaned paragraphs, and figures
+with point/region highlights and captions. Model: `claude-opus-4-8`
+(configurable; downshift once prompts stabilize). Sending frames to the API is
+opted into by setting the key or `--smart`; `--basic` stays fully local.
 
 ### Output modes (later)
 
@@ -144,17 +168,17 @@ The pipeline is platform-agnostic; only the recorder is platform-specific. **Ass
 
 ## 5. Roadmap
 
-### Phase 0 — pipeline spike (a weekend)
+### Phase 0 — pipeline spike ✅ built
 CLI, no UI polish: run command → hold key → talk & point → release → `transcript.md` opens.
 **Proves/kills the core bet:** does word-time × cursor-position produce figures that match intent?
-**Acceptance:** narrate a real code review for 60–90s pointing at 3 things → ≥2 of 3 figures are correctly placed and correctly annotated, with zero manual fixing.
+**Acceptance (pending — needs a real Mac):** narrate a real code review for 60–90s pointing at 3 things → ≥2 of 3 figures are correctly placed and correctly annotated, with zero manual fixing. The compile pipeline is verified end-to-end against synthetic sessions; live capture (mic/screen/hotkey/permissions) still needs its first real-machine run.
 
 ### Phase 1 — daily-drivable (1–2 weeks)
-Menu-bar app (still Python/rumps): hold-to-talk from anywhere, auto-compile on release, notification → open/copy actions, `sessions/` management, config file (STT backend, trigger phrases, crop mode, hotkey). A tiny `sj last` CLI that prints/copies the latest bundle path (the Claude Code hand-off).
+Menu-bar app (still Python/rumps): hold-to-talk from anywhere, auto-compile on release, notification → open/copy actions, `sessions/` management. A tiny `sj last` CLI already exists (the Claude Code hand-off).
 **Acceptance:** self-use for every Claude Code session and one written explanation per day for a week, without touching a terminal.
 
-### Phase 2 — smarts
-Claude cleanup + captions + missed-anchor detection; cursor-dwell/wiggle as an anchor signal; auto-crop to active window with zoom inset; output modes (for-AI / for-blog); redaction blur.
+### Phase 2 — smarts (mostly built)
+✅ Claude understanding pass (cleanup + captions + missed-reference detection + figure planning); ✅ gesture detection (circle → region highlight, wiggle, dwell); ✅ trail-overlaid frame selection. Remaining: auto-crop to active window with zoom inset; output modes (for-AI / for-blog); redaction blur.
 **Acceptance:** a session drops into a blog draft with < 1 minute of editing.
 
 ### Phase 3 — sharing & integrations
