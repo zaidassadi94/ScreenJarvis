@@ -23,15 +23,19 @@ class EventLog:
     def __init__(self, path: Path):
         self._f = open(path, "a", encoding="utf-8")
         self._lock = threading.Lock()
+        self._closed = False
 
     def write(self, **event) -> None:
         line = json.dumps(event, separators=(",", ":"))
         with self._lock:
+            if self._closed:  # a straggler event from a capture thread during shutdown
+                return
             self._f.write(line + "\n")
             self._f.flush()
 
     def close(self) -> None:
         with self._lock:
+            self._closed = True
             self._f.close()
 
 
@@ -43,7 +47,9 @@ class CursorTracker(threading.Thread):
         self._clock = clock
         self._log = log
         self._interval = 1.0 / hz
-        self._stop = threading.Event()
+        # not `_stop`: threading.Thread has an internal _stop() method that
+        # join()/is_alive() call — shadowing it crashes every clean shutdown
+        self._stop_event = threading.Event()
         self.position: tuple[int, int] | None = None
 
     def run(self) -> None:
@@ -52,7 +58,7 @@ class CursorTracker(threading.Thread):
         ctrl = mouse.Controller()
         last_logged: tuple[int, int] | None = None
         last_log_t = -10.0
-        while not self._stop.wait(self._interval):
+        while not self._stop_event.wait(self._interval):
             try:
                 x, y = ctrl.position
             except Exception:
@@ -67,7 +73,7 @@ class CursorTracker(threading.Thread):
                 last_log_t = t
 
     def stop(self) -> None:
-        self._stop.set()
+        self._stop_event.set()
 
 
 class ClickWatcher:
@@ -108,7 +114,7 @@ class AppWatcher(threading.Thread):
         super().__init__(daemon=True, name="sj-app")
         self._clock = clock
         self._log = log
-        self._stop = threading.Event()
+        self._stop_event = threading.Event()  # not `_stop` — see CursorTracker
 
     def run(self) -> None:
         if sys.platform != "darwin":
@@ -118,7 +124,7 @@ class AppWatcher(threading.Thread):
         except ImportError:
             return
         last = None
-        while not self._stop.wait(0.5):
+        while not self._stop_event.wait(0.5):
             try:
                 app = NSWorkspace.sharedWorkspace().frontmostApplication()
                 name = str(app.localizedName()) if app else None
@@ -129,4 +135,4 @@ class AppWatcher(threading.Thread):
                 last = name
 
     def stop(self) -> None:
-        self._stop.set()
+        self._stop_event.set()

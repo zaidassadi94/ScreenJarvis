@@ -54,7 +54,8 @@ def record_session(cfg: Config, *, hold: str | None = None) -> Path:
         state["watchdog"].cancel()
         for part in ("cursor", "frames", "clicks", "apps"):
             state[part].stop()
-        state["frames"].join(timeout=2.0)
+        for part in ("cursor", "frames", "apps"):  # let capture threads finish their last write
+            state[part].join(timeout=2.0)
         state["audio"].stop()
         state["log"].write(t=round(state["clock"].t(), 3), type="end")
         state["log"].close()

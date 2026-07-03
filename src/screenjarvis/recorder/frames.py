@@ -34,14 +34,16 @@ class FrameGrabber(threading.Thread):
         self._interval = 1.0 / fps
         self._quality = quality
         self._max_width = max_width
-        self._stop = threading.Event()
+        # not `_stop`: threading.Thread has an internal _stop() method that
+        # join()/is_alive() call — shadowing it crashes every clean shutdown
+        self._stop_event = threading.Event()
         self._click_flag = threading.Event()
 
     def request_click_frame(self) -> None:
         self._click_flag.set()
 
     def stop(self) -> None:
-        self._stop.set()
+        self._stop_event.set()
 
     def run(self) -> None:
         import mss
@@ -50,7 +52,7 @@ class FrameGrabber(threading.Thread):
         last_capture = -1e9
         with mss.mss() as sct:
             monitors = sct.monitors
-            while not self._stop.is_set():
+            while not self._stop_event.is_set():
                 now = self._clock.t()
                 click = self._click_flag.is_set()
                 if click:
