@@ -36,6 +36,10 @@ class CaptureSession:
         self._cfg = cfg
         self._on_auto_stop = on_auto_stop
         self._lock = threading.Lock()
+        # serializes the bodies of start() and stop(): a release that arrives
+        # while start() is still bringing parts up simply waits for it, so
+        # stop() never sees a half-constructed capture
+        self._lifecycle = threading.Lock()
         self._parts: dict = {}
         self._started = False
         self._finished = False
@@ -47,58 +51,70 @@ class CaptureSession:
             return self._started and not self._finished
 
     def start(self) -> None:
-        with self._lock:
-            if self._started:
-                return
-            self._started = True
-        self._cfg.sessions_dir.mkdir(parents=True, exist_ok=True)
-        self.session_dir = S.new_session_dir(self._cfg.sessions_dir)
-        try:
-            clock = Clock()
-            log = EventLog(S.events_path(self.session_dir))
-            audio = AudioRecorder(S.audio_path(self.session_dir))
-            cursor = CursorTracker(clock, log, self._cfg.cursor_hz)
-            frames = FrameGrabber(
-                self.session_dir, clock, log, lambda: cursor.position,
-                fps=self._cfg.fps, quality=self._cfg.jpeg_quality,
-                max_width=self._cfg.max_frame_width,
-            )
-            clicks = ClickWatcher(clock, log, on_click=frames.request_click_frame)
-            apps = AppWatcher(clock, log)
-            watchdog = threading.Timer(self._cfg.max_secs, self._on_auto_stop or self.stop)
-            watchdog.daemon = True
+        with self._lifecycle:
+            with self._lock:
+                if self._started:
+                    return
+                self._started = True
+            try:
+                self._cfg.sessions_dir.mkdir(parents=True, exist_ok=True)
+                self.session_dir = S.new_session_dir(self._cfg.sessions_dir)
+                clock = Clock()
+                self._parts["clock"] = clock
+                log = EventLog(S.events_path(self.session_dir))
+                self._parts["log"] = log
 
-            audio.start()
-            cursor.start()
-            frames.start()
-            clicks.start()
-            apps.start()
-            watchdog.start()
-            self._parts.update(clock=clock, log=log, audio=audio, cursor=cursor,
-                               frames=frames, clicks=clicks, apps=apps, watchdog=watchdog)
-        except Exception:
-            self._abort()
-            raise
+                # register each part the moment it is live, so _abort() can
+                # tear down exactly what a partial failure left running
+                audio = AudioRecorder(S.audio_path(self.session_dir))
+                audio.start()
+                self._parts["audio"] = audio
+                cursor = CursorTracker(clock, log, self._cfg.cursor_hz)
+                cursor.start()
+                self._parts["cursor"] = cursor
+                frames = FrameGrabber(
+                    self.session_dir, clock, log, lambda: cursor.position,
+                    fps=self._cfg.fps, quality=self._cfg.jpeg_quality,
+                    max_width=self._cfg.max_frame_width,
+                )
+                frames.start()
+                self._parts["frames"] = frames
+                clicks = ClickWatcher(clock, log, on_click=frames.request_click_frame)
+                clicks.start()
+                self._parts["clicks"] = clicks
+                apps = AppWatcher(clock, log)
+                apps.start()
+                self._parts["apps"] = apps
+                watchdog = threading.Timer(self._cfg.max_secs, self._on_auto_stop or self.stop)
+                watchdog.daemon = True
+                watchdog.start()
+                self._parts["watchdog"] = watchdog
+            except Exception:
+                self._abort()
+                raise
 
     def stop(self) -> Path | None:
         """Returns the session dir once, on the stop that actually stopped it."""
-        with self._lock:
-            if not self._started or self._finished:
-                return None
-            self._finished = True
-        p = self._parts
-        p["watchdog"].cancel()
-        for name in ("cursor", "frames", "clicks", "apps"):
-            p[name].stop()
-        for name in ("cursor", "frames", "apps"):  # let capture threads finish their last write
-            p[name].join(timeout=2.0)
-        p["audio"].stop()
-        p["log"].write(t=round(p["clock"].t(), 3), type="end")
-        p["log"].close()
-        return self.session_dir
+        with self._lifecycle:
+            with self._lock:
+                if not self._started or self._finished:
+                    return None
+                self._finished = True
+            p = self._parts  # complete: start() finished under _lifecycle
+            p["watchdog"].cancel()
+            for name in ("cursor", "frames", "clicks", "apps"):
+                p[name].stop()
+            for name in ("cursor", "frames", "apps"):  # let capture threads finish their last write
+                p[name].join(timeout=2.0)
+            p["audio"].stop()
+            p["log"].write(t=round(p["clock"].t(), 3), type="end")
+            p["log"].close()
+            return self.session_dir
 
     def _abort(self) -> None:
         """Tear down a partially-started capture and leave no trace."""
+        if watchdog := self._parts.get("watchdog"):
+            watchdog.cancel()
         for name in ("cursor", "frames", "clicks", "apps", "audio"):
             part = self._parts.get(name)
             if part:
