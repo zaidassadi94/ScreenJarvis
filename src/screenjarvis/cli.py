@@ -149,9 +149,15 @@ def _compile_and_report(cfg: Config, sdir: Path, stt: str | None, *,
     from .compiler.compile import compile_session
     from .compiler.render import fmt_clock
 
+    print(f"compiling {sdir.name} …", flush=True)
     try:
-        result = compile_session(sdir, cfg, stt=stt, smart=smart)
+        result = compile_session(sdir, cfg, stt=stt, smart=smart,
+                                 on_stage=lambda label: print(f"  {label} …", flush=True))
     except SystemExit as exc:
+        print(f"compile failed: {exc}", file=sys.stderr)
+        print(f"the recording is safe — retry with: sj compile {sdir}", file=sys.stderr)
+        return 1
+    except Exception as exc:  # network/library errors surface cleanly, not as a traceback
         print(f"compile failed: {exc}", file=sys.stderr)
         print(f"the recording is safe — retry with: sj compile {sdir}", file=sys.stderr)
         return 1

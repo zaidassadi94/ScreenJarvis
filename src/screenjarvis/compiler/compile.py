@@ -65,9 +65,16 @@ def load_events(path: Path) -> dict:
 
 
 def compile_session(session_dir: Path, cfg: Config, stt: str | None = None,
-                    smart: str | None = None) -> CompileResult:
+                    smart: str | None = None, on_stage=None) -> CompileResult:
+    # on_stage(label) is an optional progress hook so a silent multi-second
+    # compile can show what it's doing; the app leaves it None.
+    def stage(label: str) -> None:
+        if on_stage:
+            on_stage(label)
+
     session_dir = session_dir.resolve()
     events = load_events(S.events_path(session_dir))
+    stage("transcribing your audio")
     transcript = _get_transcript(session_dir, stt or cfg.stt)
     gestures = detect_gestures(events["cursor"])
     (session_dir / "raw" / "gestures.json").write_text(
@@ -76,10 +83,12 @@ def compile_session(session_dir: Path, cfg: Config, stt: str | None = None,
 
     mode = smart or cfg.smart
     if mode == "on" or (mode == "auto" and os.environ.get("ANTHROPIC_API_KEY")):
+        stage("understanding the session with Claude")
         try:
             return _compile_smart(session_dir, cfg, transcript, events, gestures)
         except Exception as exc:
             print(f"smart compile failed ({exc}); falling back to basic mode.", file=sys.stderr)
+    stage("finding the moments you pointed at")
     return _compile_basic(session_dir, cfg, transcript, events, gestures)
 
 
