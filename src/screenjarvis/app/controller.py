@@ -105,7 +105,10 @@ class AppController:
                 return
             try:
                 self._process(item)
-            except Exception as exc:  # never let one bad job kill the worker
+            # SystemExit too: the compile pipeline raises it for operational
+            # failures (no STT key, transcription rejected) — it is NOT an
+            # Exception subclass, so without this the worker would die silently.
+            except (Exception, SystemExit) as exc:
                 self._safe("notify", "ScreenJarvis", f"Unexpected error: {exc}")
             finally:
                 with self._lock:
@@ -121,7 +124,10 @@ class AppController:
     def _compile_one(self, sdir: Path) -> None:
         try:
             result = self._compile_fn(sdir, self._cfg)
-        except Exception as exc:
+        # SystemExit: the pipeline raises it for user-facing failures (missing
+        # or rejected STT key). Surface it as a notification instead of letting
+        # it kill the worker and leave the user staring at a silent icon.
+        except (Exception, SystemExit) as exc:
             self._notify("ScreenJarvis",
                          f"Compile failed: {exc} — recording kept at {sdir}")
             self._play("error")

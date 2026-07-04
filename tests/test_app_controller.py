@@ -168,6 +168,26 @@ def test_compile_failure_notifies_with_session_dir(tmp_path):
     h.ctl.shutdown(timeout=WAIT)
 
 
+def test_compile_systemexit_is_surfaced_not_swallowed(tmp_path):
+    # the compile pipeline raises SystemExit for "no/invalid STT key"; the app
+    # must notify and keep the worker alive, not die silently (the real bug that
+    # left a session folder with no transcript.md and no error shown)
+    h = Harness(tmp_path, compile_fail=SystemExit("No STT backend available"))
+    h.ctl.on_press(); h.ctl.on_release()
+    assert h.status.wait_for("ready")
+    assert "Compile failed: No STT backend available" in h.messages()[-1]
+    assert str(tmp_path / "session-0") in h.messages()[-1]
+    assert h.sounds[-1] == "error"
+
+    # worker survived: a later recording still compiles
+    h2 = Harness(tmp_path)  # fresh, working compiler
+    h.ctl.on_press(); h.ctl.on_release()
+    assert h.status.wait_for("ready")
+    assert h.compiled == [tmp_path / "session-0", tmp_path / "session-1"]
+    h.ctl.shutdown(timeout=WAIT)
+    h2.ctl.shutdown(timeout=WAIT)
+
+
 def test_copy_on_done_off_never_touches_clipboard(tmp_path):
     h = Harness(tmp_path, copy_on_done="off")
     h.ctl.on_press()

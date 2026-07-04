@@ -31,7 +31,14 @@ def run_setup(cfg: Config) -> int:
     try:
         print(_STT_INTRO)
         openai_key = _prompt_key("OpenAI API key", cfg.openai_api_key)
+        if openai_key.startswith("gsk_"):
+            print("  ⚠ that looks like a Groq key (starts with gsk_). OpenAI keys "
+                  "start with sk-. Clear it here with '-' and paste it at the Groq "
+                  "question below instead.")
         groq_key = _prompt_key("Groq API key", cfg.groq_api_key)
+        if groq_key.startswith("sk-"):
+            print("  ⚠ that looks like an OpenAI key (starts with sk-). Groq keys "
+                  "start with gsk_. It belongs at the OpenAI question above.")
         if not openai_key and not groq_key:
             print(_NO_STT_WARNING)
         print()
