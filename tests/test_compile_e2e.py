@@ -49,6 +49,18 @@ def test_end_to_end(tmp_path):
     assert (sdir / "raw" / "anchors.json").exists()
 
 
+def test_incomplete_session_gives_friendly_error(tmp_path):
+    # a leftover session with no audio.wav (recording interrupted) must produce
+    # a clear message, not a raw FileNotFoundError from open()
+    import pytest
+
+    sdir = make_synthetic_session(tmp_path / "2026-07-05_01-46-58")
+    (sdir / "raw" / "audio.wav").unlink()
+    (sdir / "raw" / "transcript.json").unlink()  # force the transcribe path
+    with pytest.raises(SystemExit, match="incomplete"):
+        compile_session(sdir, Config(sessions_dir=tmp_path), stt="groq")
+
+
 def test_recompile_is_idempotent(tmp_path):
     sdir = make_synthetic_session(tmp_path / "2026-07-03_15-00-00")
     cfg = Config(sessions_dir=tmp_path)

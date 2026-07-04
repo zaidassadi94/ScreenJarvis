@@ -89,8 +89,18 @@ def _get_transcript(session_dir: Path, choice: str) -> dict:
         return load_transcript(tj)
     if choice == "json":
         raise SystemExit(f"--stt json requested but {tj} does not exist.")
+    audio = S.audio_path(session_dir)
+    if not audio.exists():
+        # a session left behind incomplete — recording interrupted before the
+        # audio was saved (e.g. the app was quit mid-recording). Nothing to
+        # transcribe; say so plainly rather than letting open() blow up.
+        raise SystemExit(
+            f"This recording is incomplete — no audio was saved ({audio.name} is "
+            "missing), so it was probably interrupted before it finished. "
+            "Make a fresh recording and try again."
+        )
     backend = pick_backend(choice)
-    transcript = transcribe(S.audio_path(session_dir), backend)
+    transcript = transcribe(audio, backend)
     tj.write_text(json.dumps(transcript, indent=1))
     return transcript
 
