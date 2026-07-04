@@ -25,7 +25,7 @@ from . import anchors as anchor_mod
 from .annotate import annotate_frame
 from .gestures import Gesture, detect_gestures
 from .render import fmt_clock, render_markdown, render_plan_markdown
-from .stt import load_transcript, pick_backend, transcribe
+from .stt import load_transcript, transcribe
 
 
 @dataclass
@@ -108,8 +108,7 @@ def _get_transcript(session_dir: Path, choice: str) -> dict:
             "missing), so it was probably interrupted before it finished. "
             "Make a fresh recording and try again."
         )
-    backend = pick_backend(choice)
-    transcript = transcribe(audio, backend)
+    transcript = transcribe(audio, choice)  # transcribe resolves the backend + key
     tj.write_text(json.dumps(transcript, indent=1))
     return transcript
 

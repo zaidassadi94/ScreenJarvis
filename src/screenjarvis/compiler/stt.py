@@ -6,6 +6,10 @@ position is the whole trick. Backends:
 - openai  — whisper-1 via /audio/transcriptions
 - groq    — whisper-large-v3-turbo via the same OpenAI-compatible endpoint
 - json    — reuse an existing raw/transcript.json (recompiles, tests)
+
+Key routing is forgiving: a key is sent to the service its prefix names
+(`gsk_` → Groq, `sk-` → OpenAI), even if it was pasted into the other slot, so
+a first-time user can't silently misconfigure themselves into 401s.
 """
 
 from __future__ import annotations
@@ -14,46 +18,65 @@ import json
 import os
 from pathlib import Path
 
-BACKENDS = ("openai", "groq")
 _ENDPOINTS = {
-    "openai": ("https://api.openai.com/v1", "OPENAI_API_KEY", "whisper-1"),
-    "groq": ("https://api.groq.com/openai/v1", "GROQ_API_KEY", "whisper-large-v3-turbo"),
+    "groq": {"base": "https://api.groq.com/openai/v1", "env": "GROQ_API_KEY",
+             "model": "whisper-large-v3-turbo", "prefix": "gsk_"},
+    "openai": {"base": "https://api.openai.com/v1", "env": "OPENAI_API_KEY",
+               "model": "whisper-1", "prefix": "sk-"},
 }
+BACKENDS = ("groq", "openai")  # auto order: Groq first (fast + cheap)
 
 
-def pick_backend(preference: str) -> str:
-    if preference in _ENDPOINTS:
-        return preference
-    for name in BACKENDS:
-        if os.environ.get(_ENDPOINTS[name][1]):
-            return name
+def _available_keys() -> list[str]:
+    return [v for v in (os.environ.get(ep["env"], "") for ep in _ENDPOINTS.values()) if v]
+
+
+def resolve_backend(preference: str) -> tuple[str, str]:
+    """Pick (backend_name, api_key).
+
+    Prefers a key whose prefix matches a candidate service, so a Groq key
+    pasted into the OpenAI slot (or vice versa) still transcribes. Falls back
+    to the chosen service's own slot key when no prefix matches.
+    """
+    order = [preference] if preference in _ENDPOINTS else list(BACKENDS)
+    keys = _available_keys()
+    for name in order:  # route by key format first
+        prefix = _ENDPOINTS[name]["prefix"]
+        for key in keys:
+            if key.startswith(prefix):
+                return name, key
+    for name in order:  # otherwise use the service's own slot, whatever it holds
+        if key := os.environ.get(_ENDPOINTS[name]["env"], ""):
+            return name, key
     raise SystemExit(
-        "No STT backend available: set OPENAI_API_KEY or GROQ_API_KEY "
-        "(or pass --stt json to reuse an existing raw/transcript.json)."
+        "No speech-to-text key found. Run `sj setup` and paste an OpenAI or Groq "
+        "API key (Groq keys start with gsk_, OpenAI with sk-)."
     )
 
 
-def transcribe(audio: Path, backend: str) -> dict:
-    base, key_env, model = _ENDPOINTS[backend]
-    key = os.environ.get(key_env)
-    if not key:
-        raise SystemExit(f"{key_env} is not set (required for --stt {backend}).")
+def pick_backend(preference: str) -> str:
+    return resolve_backend(preference)[0]
+
+
+def transcribe(audio: Path, preference: str) -> dict:
+    name, key = resolve_backend(preference)
+    ep = _ENDPOINTS[name]
     import httpx
 
     with open(audio, "rb") as f:
         response = httpx.post(
-            f"{base}/audio/transcriptions",
+            f"{ep['base']}/audio/transcriptions",
             headers={"Authorization": f"Bearer {key}"},
             files={"file": (audio.name, f, "audio/wav")},
             data={
-                "model": model,
+                "model": ep["model"],
                 "response_format": "verbose_json",
                 "timestamp_granularities[]": ["word", "segment"],
             },
             timeout=httpx.Timeout(180, connect=15),
         )
     if response.status_code != 200:
-        raise SystemExit(f"STT request failed ({response.status_code}): {response.text[:400]}")
+        raise SystemExit(f"{name} transcription failed ({response.status_code}): {response.text[:400]}")
     return normalize(response.json())
 
 
@@ -63,7 +86,7 @@ def normalize(raw: dict) -> dict:
         for w in raw.get("words") or []
     ]
     if not words:
-        raise SystemExit("STT backend returned no word timestamps; ScreenJarvis needs word-level timing.")
+        raise SystemExit("The transcription came back with no word timestamps; ScreenJarvis needs word-level timing.")
     segments = [
         {"start": float(s["start"]), "end": float(s["end"]), "text": str(s["text"]).strip()}
         for s in raw.get("segments") or []
