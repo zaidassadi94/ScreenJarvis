@@ -4,6 +4,15 @@ Push-to-talk dictation that can see your screen. Hold a key, talk, and point wit
 
 **Status:** Phase 1 — a resident macOS menu-bar app you can use every day (see [PLAN.md](PLAN.md)).
 
+## Two ways to run it
+
+- **As a Mac app** — build a double-clickable `ScreenJarvis.app` (menu-bar only,
+  API keys entered in-app, no Terminal after install): see
+  [packaging/BUILD.md](packaging/BUILD.md). A signed, notarized download is
+  planned; until then you build it yourself with `./scripts/build_app.sh`.
+- **From the terminal with `uv`** — the fastest way to try it, below. Same app,
+  launched with `uv run sj app`.
+
 ## Set up (10 minutes, one time)
 
 You need a Mac and the Terminal app (it's in Applications → Utilities). Copy each block below into Terminal and press Enter.
@@ -66,14 +75,18 @@ If the hotkey does nothing or you see "could not start capture", it's almost alw
 1. **Hold the right Option key** — anywhere, in any app. The menu-bar icon turns 🔴.
 2. **Talk, point, click.** Move your cursor to the things you mention, click them to pin them precisely, circle things to highlight a whole area.
 3. **Release.** The icon shows ⏳ while it compiles in the background — you can keep working, or even start the next recording.
-4. **Notification appears** — the Claude prompt is already on your clipboard. Switch to Claude Code and press **Cmd-V**. Done.
+4. **Your cleaned-up words paste themselves in** — wherever your cursor is (Wispr-style). The screenshots go into the session document for when you need them; see [Getting the output out](#getting-the-output-out).
 
 Clicking the 🎙 icon opens the menu:
 
 - **Status** — Ready / Recording… / Compiling…
 - **Open Last Session** — opens the most recent transcript.md
-- **Copy Claude Prompt** — re-copies the paste-into-Claude prompt
+- **Copy Text** — the cleaned narration, to paste anywhere
+- **Copy Rich Text (with images)** — text + the screenshots, for Notion / Docs / email
+- **Open as Web Page** — a self-contained HTML document of the session
+- **Copy Claude Prompt** — a prompt pointing at the session, to paste into Claude Code
 - **Open Sessions Folder** — all your recordings live here
+- **Set API Keys…** — enter / change keys without opening Terminal
 - **Open Config File** — edit settings (creates the file with all options listed)
 - **Start at Login** — toggle so ScreenJarvis is always running
 - **Quit ScreenJarvis**
@@ -93,6 +106,28 @@ Each recording becomes a self-contained folder:
   raw/               # audio, all frames, event log, word-level transcript
 ```
 
+## Getting the output out
+
+A recording compiles into one canonical document (`transcript.md` + `images/`).
+From there ScreenJarvis gives it to you in the shape you need — pick the default
+in the config (`on_done`), or reach for any of them on demand from the menu:
+
+| You want to… | Use | What you get |
+|---|---|---|
+| Dictate into a text box | **paste-text** (default) | the cleaned narration typed straight into the focused app, like Wispr |
+| Drop it into Notion / Docs / email | **Copy Rich Text** | formatted text **with the screenshots inline** (macOS rich clipboard) |
+| Send a readable write-up / bug report | **Open as Web Page** | a single self-contained `.html` (images embedded); ⌘P → Save as PDF for a PDF |
+| Hand it to Claude Code | **Copy Claude Prompt** | a prompt pointing at `transcript.md`, which Claude reads with its figures |
+
+Images are **embedded** so every export is self-contained — nothing is uploaded,
+it works offline. Hosting figures behind URLs is a planned option; the seam for
+it is in place (see [DECISIONS.md](DECISIONS.md)). From Terminal:
+
+```sh
+uv run sj export last --format html --open   # write + open the web page
+uv run sj export last --format text          # print the cleaned narration
+```
+
 ## Smart vs basic mode
 
 With an Anthropic key set, compiling uses **smart mode**: Claude reads the whole session — timestamped transcript, click/gesture timeline, screenshots with your cursor's path drawn on them — and plans the document: cleaned-up prose, which moments deserve figures (including references like "the thing in the corner" that match no trigger phrase), point vs. region highlights (circle something and the figure gets a ring around that area), and captions that name what's shown.
@@ -110,7 +145,8 @@ sessions_dir = "~/ScreenJarvis/sessions"
 hold_key = "alt_r"               # right Option; also e.g. cmd_r, f8, or a single character
 max_secs = 600.0                 # auto-stop watchdog
 sounds = true                    # start/stop/done/error sounds
-copy_on_done = "claude-prompt"   # what lands on the clipboard: claude-prompt | path | off
+on_done = "paste-text"           # what releasing the key does with the result:
+                                 # paste-text | copy-text | copy-rich | open-html | claude-prompt | path | off
 
 stt = "auto"                     # auto | openai | groq
 smart = "auto"                   # auto (Claude when key is set) | on | off
@@ -142,6 +178,8 @@ You rarely need these once the app is running, but everything works from Termina
 | `uv run sj compile last` | (re)compile the latest session |
 | `uv run sj compile last --basic` / `--smart` | force a compile mode |
 | `uv run sj compile last --stt openai` | force re-transcription |
+| `uv run sj export last --format html` | write a self-contained web page (`--open` to open it) |
+| `uv run sj export last --format text` | print the cleaned narration |
 | `uv run sj last` | print the latest session directory (`--open` to reveal) |
 | `uv run sj synth` | generate a synthetic session (dev; no mic or screen) |
 

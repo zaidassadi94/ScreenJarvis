@@ -145,13 +145,26 @@ with point/region highlights and captions. Model: `claude-opus-4-8`
 (configurable; downshift once prompts stabilize). Sending frames to the API is
 opted into by setting the key or `--smart`; `--basic` stays fully local.
 
-### Output modes (later)
+### Output modes — built (see DECISIONS.md D1–D3)
 
-Same session, different renders: **for-AI** (verbose, precise, file paths, full frames available), **for-blog** (polished prose, curated figures, hosted images), **bug report** (repro-steps template). MVP ships one generic markdown; modes are just prompt + template variants over the same bundle.
+One canonical document, many consumables — the projection layer is
+`compiler/deliver.py`, delivered by `on_done` / the app menu / `sj export`:
 
-### Hosting (Phase 3, blog case only)
+- **paste-text** (default) — cleaned narration typed into the focused app, Wispr-style.
+- **copy-rich** — text + embedded screenshots on the clipboard (Notion / Docs / email).
+- **open-html** — a single self-contained HTML page (images as data URIs); ⌘P → PDF.
+- **claude-prompt / copy-text / path / off** — the remaining hand-offs.
 
-Local bundle covers Claude Code and most sharing. For blogs: "copy portable markdown" uploads `images/` to object storage (Cloudflare R2 / S3 presigned; or a GitHub gist for dev users) and rewrites URLs. Explicitly opt-in per session.
+Deferred: portable Markdown (`--format md`, shape TBD) and direct PDF (HTML→print
+covers it for now). The for-AI / for-blog / bug-report *prompt* variants over the
+understanding pass are still future.
+
+### Hosting (deferred; seam in place)
+
+Images are **embedded** today, so every export is self-contained and offline.
+Hosting figures behind URLs (Cloudflare R2 / S3 presigned; or a gist for dev
+users) is opt-in per session and slots into `deliver._image_src` /
+`Config.image_hosting` — not built until there's a bucket + credentials.
 
 ### Platform & stack
 
@@ -183,7 +196,13 @@ Resident menu-bar app (Python/rumps, `sj app`): a global hold-to-talk listener w
 **Acceptance:** a session drops into a blog draft with < 1 minute of editing.
 
 ### Phase 3 — sharing & integrations
-Image hosting + portable markdown; HTML export; MCP server exposing `latest_session` / `get_session(n)` to Claude Code; optional short video clips around anchors; app-shell rewrite (Tauri/Swift) if distributing.
+✅ HTML export (self-contained); ✅ installable app — packaged with **py2app**
+(`ScreenJarvis.app` / DMG, `packaging/`), not the mooted Tauri/Swift rewrite: the
+Python shell bundles fine and the pipeline was the asset, so a rewrite stayed
+unjustified. Remaining: signed + notarized public download (needs a Developer ID;
+CI build on tag); image hosting + portable markdown; MCP server exposing
+`latest_session` / `get_session(n)` to Claude Code; optional short video clips
+around anchors.
 
 ## 6. Risks
 

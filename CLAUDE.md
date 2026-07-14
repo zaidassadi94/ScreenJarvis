@@ -27,9 +27,13 @@ src/screenjarvis/
                 keyframes (frame shortlist), understand (Claude pass →
                 structured plan), annotate (rings/region highlights/cursor
                 trails), render, compile (pipeline: transcript → understand →
-                figures → transcript.md; smart mode with basic fallback).
+                figures → transcript.md; smart mode with basic fallback),
+                deliver (project transcript.md → text / self-contained HTML).
   app/          controller (platform-free brain, fully tested), menubar (rumps
-                shell, macOS), notify, launchagent (start-at-login).
+                shell, macOS), notify (macOS verbs: paste, rich clipboard, key
+                dialog), launchagent (start-at-login).
+  packaging/    setup_app.py (py2app), app_entry, icon/make_icon.py, BUILD.md;
+                scripts/build_app.sh builds ScreenJarvis.app + DMG (macOS).
   config.py     defaults ← ~/.config/screenjarvis/config.toml ← env. API keys
                 may live in the config; apply_api_keys() makes them AUTHORITATIVE
                 over stale shell env vars (env is only a fallback).
@@ -48,15 +52,21 @@ events.jsonl, frames/, transcript.json, ...}}`.
   fallback on any smart failure — a recording is never lost.
 
 ## Working here
-- Run/test: `uv run pytest -q` (53 tests). Headless demo:
-  `uv run sj synth && uv run sj compile synth-session`.
+- Run/test: `uv run pytest -q` (64 tests). Headless demo:
+  `uv run sj synth && uv run sj compile synth-session && uv run sj export synth-session --format html`.
 - Don't run the recorder here — mic/screen aren't available; use the synth path.
+  The macOS shell (rumps/py2app/osascript) also can't run here — keep logic in
+  the platform-free layer (controller, deliver) where it's testable.
 - Match existing style: module docstrings stating design constraints, small
   focused modules, comments only for non-obvious constraints, modern typing.
-- Develop on branch `claude/wispr-screen-context-tool-4eg3bz`; commit + push per
-  the repo's git conventions.
+- Develop on branch `claude/screenjarvis-macos-app-output-wnbu25`; commit + push
+  per the repo's git conventions.
 
 ## Current state & next task
-Working end-to-end on macOS (smart mode confirmed). **Next:** smart mode
-over-includes figures (9 for ~90s) — make it selective (tune the understanding
-prompt; consider a max-figures cap). See `HANDOFF.md` and `PLAN.md` (roadmap).
+Working end-to-end on macOS. Output layer + installable app landed (see
+`DECISIONS.md`): auto-paste default, rich clipboard, self-contained HTML,
+`sj export`, and a py2app `.app`/`.dmg` with in-app key entry. **Open next:**
+(1) still-untuned smart mode over-includes figures (9 for ~90s) — make the
+understanding prompt selective / add a max-figures cap; (2) a signed+notarized
+public build (Developer ID + CI on tag); (3) deferred outputs — portable
+Markdown, PDF, image hosting. See `DECISIONS.md`, `HANDOFF.md`, `PLAN.md`.

@@ -33,18 +33,34 @@ into the header"*, *"Wispr Flow's integrations showcase"*).
   to offline **basic** mode automatically if Claude/key fails — a recording is
   never lost.
 - **Menu-bar app** (`sj app`): resident hold-to-talk, background compile queue,
-  notification, clipboard hand-off, start-at-login.
+  notification, hand-off, start-at-login.
+- **Usable output** (new): release auto-pastes your cleaned words into the
+  focused app (Wispr-style); menu / `on_done` also give rich text+images to the
+  clipboard, a self-contained HTML page, or the Claude prompt. `sj export
+  <session> --format html|text`. Images embedded (self-contained); hosting is a
+  documented seam. See `DECISIONS.md`.
+- **Installable app** (new): `scripts/build_app.sh` → double-clickable
+  `ScreenJarvis.app` + DMG via py2app (menu-bar accessory, mic/AppleEvents
+  usage strings, in-app "Set API Keys…" so first run needs no Terminal). Build
+  is unsigned for now; signing/notarization is wired behind env vars.
+  See `packaging/BUILD.md`.
 - **Keys:** `sj setup` values are now authoritative over stale shell env vars
   (the bug that cost ~a dozen debugging rounds — fixed in commit 37581e7).
 
 ### Known issues / next up (in priority order)
-1. **Smart mode over-includes figures** — 9 for a ~90s clip is too many. Tune the
+1. **Verify the new macOS shell paths on real hardware** — auto-paste (⌘V via
+   System Events), rich clipboard (`textutil` HTML→RTF, image embedding), and the
+   `Set API Keys…` dialog are written but *not yet run on a Mac* (this env has no
+   GUI). Watch for the Automation (System Events) permission prompt on first
+   auto-paste, and confirm `textutil` embeds the figures.
+2. **Build the `.app` on a Mac** — run `./scripts/build_app.sh`, grant the four
+   permission panes to *ScreenJarvis* (not Terminal), and smoke-test a recording.
+3. **Smart mode over-includes figures** — 9 for a ~90s clip is too many. Tune the
    understanding prompt / add a max-figures cap (config `max_llm_frames` bounds
    input frames, not output figures — the prompt should be told to be selective).
-   This is the clear next task; the user flagged "not everything was perfect."
-2. **macOS notifications may be suppressed** (Focus mode / permission) — cosmetic;
-   the compile still succeeds and the doc/clipboard are correct.
-3. Basic-mode rings were "ok, not perfect" — largely superseded by smart mode.
+4. **Deferred outputs** (see `DECISIONS.md`): portable Markdown, direct PDF,
+   image hosting; and a signed/notarized public download.
+5. **macOS notifications may be suppressed** (Focus mode / permission) — cosmetic.
 
 ### How to run
 ```sh
@@ -59,6 +75,6 @@ uv run sj synth && uv run sj compile synth-session   # headless demo, no mic/scr
 ```
 
 ### Repo
-- Branch: `claude/wispr-screen-context-tool-4eg3bz`
-- Latest before this handoff: `37581e7` (config-authoritative keys)
-- Architecture and roadmap: `PLAN.md`. Project guide for future sessions: `CLAUDE.md`.
+- Branch: `claude/screenjarvis-macos-app-output-wnbu25`
+- Architecture and roadmap: `PLAN.md`. Decisions + deferred work: `DECISIONS.md`.
+  Project guide for future sessions: `CLAUDE.md`.
