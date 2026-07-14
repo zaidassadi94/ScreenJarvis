@@ -76,7 +76,12 @@ def transcribe(audio: Path, preference: str) -> dict:
             timeout=httpx.Timeout(180, connect=15),
         )
     if response.status_code != 200:
-        raise SystemExit(f"{name} transcription failed ({response.status_code}): {response.text[:400]}")
+        detail = response.text[:300]
+        if response.status_code == 401:
+            detail += (f"  →  {name.capitalize()} rejected the key. Check the {name} key "
+                       f"you saved with `sj setup` is correct and still active in the "
+                       f"{name.capitalize()} console.")
+        raise SystemExit(f"{name} transcription failed ({response.status_code}): {detail}")
     return normalize(response.json())
 
 

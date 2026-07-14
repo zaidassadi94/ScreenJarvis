@@ -126,7 +126,7 @@ crop = "none"                    # none | region (crop figures around the cursor
 extra_trigger_phrases = ["this widget", "this dashboard"]
 ```
 
-Environment variables (`OPENAI_API_KEY`, `GROQ_API_KEY`, `ANTHROPIC_API_KEY`) still work and win over the config file.
+A key you save with `sj setup` is authoritative: it's used even if an old `OPENAI_API_KEY` / `GROQ_API_KEY` / `ANTHROPIC_API_KEY` is still set in your shell (so a leftover `export` can't silently break transcription). Environment variables still work as a fallback for any service you *haven't* configured with `sj setup`.
 
 ## CLI reference
 

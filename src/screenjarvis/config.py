@@ -62,9 +62,26 @@ _KEY_ENV_VARS = {
 }
 
 
-def apply_api_keys(cfg: Config) -> None:
-    """Export config-file keys into the environment; real env vars still win."""
+def apply_api_keys(cfg: Config) -> list[str]:
+    """Make `sj setup` the authority.
+
+    A key saved in the config file is used even when a (possibly stale) shell
+    environment variable is set for the same service — otherwise a leftover
+    export silently shadows what the user configured, which is a maze to debug.
+    Environment variables still fill in for any service with no saved key, so
+    CI / power users who never run `sj setup` keep working. Returns notices
+    about any override so the caller can surface them.
+    """
+    notices: list[str] = []
     for attr, env in _KEY_ENV_VARS.items():
         value = getattr(cfg, attr)
-        if value and not os.environ.get(env):
-            os.environ[env] = value
+        if not value:
+            continue  # nothing saved: leave an existing env var as the fallback
+        existing = os.environ.get(env)
+        if existing and existing != value:
+            notices.append(
+                f"note: using {env} from your ScreenJarvis config; a different {env} "
+                f"set in your shell is being ignored."
+            )
+        os.environ[env] = value
+    return notices

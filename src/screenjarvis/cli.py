@@ -50,7 +50,8 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     cfg = load_config()
-    apply_api_keys(cfg)
+    for notice in apply_api_keys(cfg):
+        print(notice, file=sys.stderr)
     handlers = {"record": cmd_record, "compile": cmd_compile, "last": cmd_last,
                 "setup": cmd_setup, "app": cmd_app, "synth": cmd_synth}
     return handlers[args.command](cfg, args)

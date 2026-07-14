@@ -47,6 +47,11 @@ class CompileResult:
     anchors: list[anchor_mod.Anchor]  # basic mode only
 
 
+def _looks_like_auth_error(exc: Exception) -> bool:
+    s = str(exc).lower()
+    return "401" in s or "authentication" in s or "api key is invalid" in s
+
+
 def load_events(path: Path) -> dict:
     out: dict = {"cursor": [], "clicks": [], "frames": [], "windows": [], "end": None}
     kinds = {"cursor": "cursor", "click": "clicks", "frame": "frames", "window": "windows"}
@@ -87,7 +92,11 @@ def compile_session(session_dir: Path, cfg: Config, stt: str | None = None,
         try:
             return _compile_smart(session_dir, cfg, transcript, events, gestures)
         except Exception as exc:
-            print(f"smart compile failed ({exc}); falling back to basic mode.", file=sys.stderr)
+            hint = ""
+            if _looks_like_auth_error(exc):
+                hint = (" — the Anthropic key was rejected; check the key saved with "
+                        "`sj setup` is correct and active at console.anthropic.com")
+            print(f"smart compile failed ({exc}){hint}; using basic mode.", file=sys.stderr)
     stage("finding the moments you pointed at")
     return _compile_basic(session_dir, cfg, transcript, events, gestures)
 

@@ -89,7 +89,8 @@ def test_smart_failure_falls_back_to_basic(tmp_path, monkeypatch, capsys):
 
     assert result.mode == "basic"
     assert len(result.figures) == 2  # the heuristic path still delivered
-    assert "falling back to basic mode" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "smart compile failed" in err and "basic mode" in err
 
 
 def test_smart_off_never_touches_the_model(tmp_path, monkeypatch):
