@@ -22,6 +22,7 @@ import threading
 import time
 from pathlib import Path
 
+from ..compiler import deliver
 from ..compiler.compile import compile_session
 from ..config import Config
 from ..recorder.capture import PERMISSION_HINT, CaptureSession
@@ -37,12 +38,18 @@ class AppController:
     _SENTINEL = object()
 
     def __init__(self, cfg: Config, *, set_status, notify, clipboard, play,
+                 paste=None, copy_rich=None, open_doc=None,
                  capture_factory=CaptureSession, compile_fn=compile_session):
         self._cfg = cfg
         self._set_status = set_status
         self._notify = notify
         self._clipboard = clipboard
         self._play = play
+        # platform delivery verbs (macOS shell in menubar.py); optional so the
+        # controller runs headless — each falls back to a plain clipboard copy.
+        self._paste = paste          # paste(text): type into the focused app
+        self._copy_rich = copy_rich  # copy_rich(html_path): text + images to clipboard
+        self._open_doc = open_doc    # open_doc(path): reveal a built document
         self._capture_factory = capture_factory
         self._compile_fn = compile_fn
         self._lock = threading.Lock()
@@ -134,25 +141,47 @@ class AppController:
             return
         with self._lock:
             self._last_result = result
-        copied = self._hand_off(result)
-        suffix = " — prompt copied, paste into Claude Code" if copied else ""
+        suffix = self._hand_off(result)
         self._notify("ScreenJarvis",
                      f"{len(result.figures)} figure(s) · {result.mode} mode{suffix}")
         self._play("done")
 
-    def _hand_off(self, result) -> bool:
-        mode = self._cfg.copy_on_done
-        if mode == "claude-prompt":
-            text = claude_prompt(result.md_path)
-        elif mode == "path":
-            text = str(result.md_path)
-        else:
-            return False
+    def _hand_off(self, result) -> str:
+        """Deliver the finished session per `on_done`; return a suffix naming what
+        happened (or "" if nothing / it failed). Any delivery error is swallowed:
+        a broken clipboard or paste must never kill the compile worker."""
+        action = self._cfg.on_done
         try:
-            self._clipboard(text)
-            return True
+            if action == "paste-text":
+                text = deliver.session_text(result.session_dir)
+                if self._paste is not None:
+                    self._paste(text)
+                    return " — pasted into the focused app"
+                self._clipboard(text)
+                return " — text copied (paste not available here)"
+            if action == "copy-text":
+                self._clipboard(deliver.session_text(result.session_dir))
+                return " — text copied to clipboard"
+            if action == "copy-rich":
+                if self._copy_rich is not None:
+                    self._copy_rich(deliver.write_html(result.session_dir, embed=False))
+                    return " — copied with images, paste into a rich editor"
+                self._clipboard(deliver.session_text(result.session_dir))
+                return " — text copied (rich copy not available here)"
+            if action == "open-html":
+                doc = deliver.write_html(result.session_dir)
+                if self._open_doc is not None:
+                    self._open_doc(doc)
+                return " — opened as a web page"
+            if action == "claude-prompt":
+                self._clipboard(claude_prompt(result.md_path))
+                return " — prompt copied, paste into Claude Code"
+            if action == "path":
+                self._clipboard(str(result.md_path))
+                return " — path copied"
         except Exception:
-            return False  # e.g. pbcopy missing: degrade to a plain notification
+            return ""  # degrade to a plain success notification
+        return ""
 
     def _safe(self, kind: str, *args) -> None:
         try:

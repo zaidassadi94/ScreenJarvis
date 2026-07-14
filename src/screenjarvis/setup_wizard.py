@@ -119,6 +119,13 @@ def _prompt_yes_no(label: str, default: bool) -> bool:
         print("please answer y or n")
 
 
+def save_keys(updates: dict[str, str]) -> None:
+    """Persist just the given key=value pairs into the config file, leaving every
+    other setting and comment untouched. Used by the app's in-place "Set API
+    Keys…" dialog so keys can be saved without opening a terminal."""
+    _merge_into_config_file(updates)
+
+
 def _merge_into_config_file(updates: dict[str, object]) -> None:
     """Edit only the given keys in place, line by line.
 

@@ -35,6 +35,17 @@ def main(argv: list[str] | None = None) -> int:
                        help="default: reuse raw/transcript.json when present, else auto")
     _add_mode_flags(p_com)
 
+    p_exp = sub.add_parser("export", help="turn a compiled session into a usable output")
+    p_exp.add_argument("session", help="session directory, or 'last'")
+    p_exp.add_argument("--format", choices=["html", "text"], default="html",
+                       help="html: self-contained web page (images embedded); "
+                            "text: cleaned narration for pasting into a text box "
+                            "(portable markdown / pdf are planned — see DECISIONS.md)")
+    p_exp.add_argument("-o", "--out", type=Path, default=None,
+                       help="write here instead of the default (html -> <session>/session.html; "
+                            "text -> stdout)")
+    p_exp.add_argument("--open", action="store_true", help="open the file after writing (macOS)")
+
     p_last = sub.add_parser("last", help="print the latest session directory")
     p_last.add_argument("--open", action="store_true")
 
@@ -52,8 +63,8 @@ def main(argv: list[str] | None = None) -> int:
     cfg = load_config()
     for notice in apply_api_keys(cfg):
         print(notice, file=sys.stderr)
-    handlers = {"record": cmd_record, "compile": cmd_compile, "last": cmd_last,
-                "setup": cmd_setup, "app": cmd_app, "synth": cmd_synth}
+    handlers = {"record": cmd_record, "compile": cmd_compile, "export": cmd_export,
+                "last": cmd_last, "setup": cmd_setup, "app": cmd_app, "synth": cmd_synth}
     return handlers[args.command](cfg, args)
 
 
@@ -92,6 +103,26 @@ def cmd_record(cfg: Config, args) -> int:
 def cmd_compile(cfg: Config, args) -> int:
     return _compile_and_report(cfg, _resolve_session(cfg, args.session), args.stt,
                                smart=args.smart, open_after=False)
+
+
+def cmd_export(cfg: Config, args) -> int:
+    from .compiler import deliver
+
+    sdir = _resolve_session(cfg, args.session)
+    if args.format == "text":
+        text = deliver.session_text(sdir)
+        if args.out:
+            args.out.write_text(text + "\n")
+            print(args.out)
+        else:
+            print(text)
+        return 0
+    out = args.out or sdir / "session.html"
+    out.write_text(deliver.session_html(sdir, embed=True))
+    print(out)
+    if args.open and sys.platform == "darwin":
+        subprocess.run(["open", str(out)], check=False)
+    return 0
 
 
 def cmd_last(cfg: Config, args) -> int:

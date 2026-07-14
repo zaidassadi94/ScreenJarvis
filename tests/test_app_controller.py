@@ -55,15 +55,20 @@ class FakeCapture:
 
 
 class Harness:
-    def __init__(self, tmp_path: Path, *, copy_on_done: str = "claude-prompt",
+    def __init__(self, tmp_path: Path, *, on_done: str = "claude-prompt",
                  gate: threading.Event | None = None,
                  compile_fail: Exception | None = None,
-                 start_fail: Exception | None = None):
-        self.cfg = Config(sessions_dir=tmp_path / "sessions", copy_on_done=copy_on_done)
+                 start_fail: Exception | None = None,
+                 transcript_md: str | None = None,
+                 provide_paste: bool = True):
+        self.cfg = Config(sessions_dir=tmp_path / "sessions", on_done=on_done)
         self.status = StatusLog()
         self.notes: list[tuple[str, str]] = []
         self.clips: list[str] = []
         self.sounds: list[str] = []
+        self.pastes: list[str] = []
+        self.rich: list[Path] = []
+        self.opened: list[Path] = []
         self.captures: list[FakeCapture] = []
         self.compiled: list[Path] = []
 
@@ -80,6 +85,8 @@ class Harness:
             self.compiled.append(sdir)
             if compile_fail is not None:
                 raise compile_fail
+            if transcript_md is not None:
+                (sdir / "transcript.md").write_text(transcript_md)
             return types.SimpleNamespace(md_path=sdir / "transcript.md", mode="smart",
                                          figures=[1, 2], session_dir=sdir)
 
@@ -87,6 +94,8 @@ class Harness:
             self.cfg, set_status=self.status,
             notify=lambda title, msg: self.notes.append((title, msg)),
             clipboard=self.clips.append, play=self.sounds.append,
+            paste=self.pastes.append if provide_paste else None,
+            copy_rich=self.rich.append, open_doc=self.opened.append,
             capture_factory=factory, compile_fn=compile_fn,
         )
 
@@ -188,8 +197,8 @@ def test_compile_systemexit_is_surfaced_not_swallowed(tmp_path):
     h2.ctl.shutdown(timeout=WAIT)
 
 
-def test_copy_on_done_off_never_touches_clipboard(tmp_path):
-    h = Harness(tmp_path, copy_on_done="off")
+def test_on_done_off_never_touches_clipboard(tmp_path):
+    h = Harness(tmp_path, on_done="off")
     h.ctl.on_press()
     h.ctl.on_release()
     assert h.status.wait_for("ready")
@@ -198,12 +207,53 @@ def test_copy_on_done_off_never_touches_clipboard(tmp_path):
     h.ctl.shutdown(timeout=WAIT)
 
 
-def test_copy_on_done_path_copies_bare_path(tmp_path):
-    h = Harness(tmp_path, copy_on_done="path")
+def test_on_done_path_copies_bare_path(tmp_path):
+    h = Harness(tmp_path, on_done="path")
     h.ctl.on_press()
     h.ctl.on_release()
     assert h.status.wait_for("ready")
     assert h.clips == [str(tmp_path / "session-0" / "transcript.md")]
+    h.ctl.shutdown(timeout=WAIT)
+
+
+_MD = "## Fixing the layout\n\n*2026-07-14 14:22 · 44s*\n\nThe card overflows.\n\n![Fig 1 — the card](images/fig-01.jpg)\n"
+
+
+def test_on_done_paste_text_types_narration_into_frontmost(tmp_path):
+    h = Harness(tmp_path, on_done="paste-text", transcript_md=_MD)
+    h.ctl.on_press(); h.ctl.on_release()
+    assert h.status.wait_for("ready")
+    assert h.pastes == ["The card overflows."]  # prose only: no title, meta, or figure
+    assert h.clips == []
+    assert "pasted into the focused app" in h.messages()[-1]
+    h.ctl.shutdown(timeout=WAIT)
+
+
+def test_paste_text_falls_back_to_clipboard_without_a_paste_verb(tmp_path):
+    h = Harness(tmp_path, on_done="paste-text", transcript_md=_MD, provide_paste=False)
+    h.ctl.on_press(); h.ctl.on_release()
+    assert h.status.wait_for("ready")
+    assert h.clips == ["The card overflows."]
+    assert "text copied" in h.messages()[-1]
+    h.ctl.shutdown(timeout=WAIT)
+
+
+def test_on_done_copy_rich_builds_html_and_hands_it_off(tmp_path):
+    h = Harness(tmp_path, on_done="copy-rich", transcript_md=_MD)
+    h.ctl.on_press(); h.ctl.on_release()
+    assert h.status.wait_for("ready")
+    assert h.rich == [tmp_path / "session-0" / "session.html"]
+    assert (tmp_path / "session-0" / "session.html").exists()
+    assert "with images" in h.messages()[-1]
+    h.ctl.shutdown(timeout=WAIT)
+
+
+def test_on_done_open_html_builds_and_opens(tmp_path):
+    h = Harness(tmp_path, on_done="open-html", transcript_md=_MD)
+    h.ctl.on_press(); h.ctl.on_release()
+    assert h.status.wait_for("ready")
+    assert h.opened == [tmp_path / "session-0" / "session.html"]
+    assert "opened as a web page" in h.messages()[-1]
     h.ctl.shutdown(timeout=WAIT)
 
 

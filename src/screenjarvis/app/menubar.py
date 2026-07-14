@@ -10,12 +10,15 @@ thread, copies it into the status-bar title and the status menu item.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import rumps
 
 from .. import session as S
-from ..config import CONFIG_PATH, Config
+from ..compiler import deliver
+from ..config import CONFIG_PATH, Config, apply_api_keys, load_config
 from ..recorder.hotkey import HoldListener
+from ..setup_wizard import save_keys
 from . import launchagent, notify
 from .controller import AppController
 
@@ -30,7 +33,8 @@ CONFIG_TEMPLATE = """\
 # hold_key = "alt_r"               # e.g. alt_r, cmd_r, f8, or a single character
 # max_secs = 600.0                 # auto-stop watchdog
 # sounds = true
-# copy_on_done = "claude-prompt"   # claude-prompt | path | off
+# on_done = "paste-text"           # what releasing the key does with the result:
+#   paste-text | copy-text | copy-rich | open-html | claude-prompt | path | off
 
 # stt = "auto"                     # auto | openai | groq | json
 # smart = "auto"                   # auto (Claude when key is set) | on | off
@@ -57,8 +61,13 @@ class ScreenJarvisApp(rumps.App):
             self._status_item,
             None,
             "Open Last Session",
+            "Copy Text",
+            "Copy Rich Text (with images)",
+            "Open as Web Page",
             "Copy Claude Prompt",
+            None,
             "Open Sessions Folder",
+            "Set API Keys…",
             "Open Config File",
             None,
             login_item,
@@ -71,6 +80,9 @@ class ScreenJarvisApp(rumps.App):
             notify=notify.notify,
             clipboard=notify.copy_to_clipboard,
             play=lambda event: notify.play(event, enabled=cfg.sounds),
+            paste=notify.paste_text_into_frontmost,
+            copy_rich=notify.copy_rich,
+            open_doc=notify.open_path,
         )
 
     def _set_status(self, status: str) -> None:
@@ -92,6 +104,29 @@ class ScreenJarvisApp(rumps.App):
         md = S.transcript_md_path(sdir)
         notify.open_path(md if md.exists() else sdir)
 
+    @rumps.clicked("Copy Text")
+    def copy_text(self, _sender) -> None:
+        sdir = self._compiled_session()
+        if sdir is None:
+            return
+        notify.copy_to_clipboard(deliver.session_text(sdir))
+        notify.notify("ScreenJarvis", "Narration copied — paste it anywhere.")
+
+    @rumps.clicked("Copy Rich Text (with images)")
+    def copy_rich_text(self, _sender) -> None:
+        sdir = self._compiled_session()
+        if sdir is None:
+            return
+        notify.copy_rich(deliver.write_html(sdir, embed=False))
+        notify.notify("ScreenJarvis", "Copied with images — paste into Notion, Docs, or email.")
+
+    @rumps.clicked("Open as Web Page")
+    def open_as_web_page(self, _sender) -> None:
+        sdir = self._compiled_session()
+        if sdir is None:
+            return
+        notify.open_path(deliver.write_html(sdir, embed=True))
+
     @rumps.clicked("Copy Claude Prompt")
     def copy_claude_prompt(self, _sender) -> None:
         prompt = self.controller.last_claude_prompt()
@@ -100,6 +135,32 @@ class ScreenJarvisApp(rumps.App):
             return
         notify.copy_to_clipboard(prompt)
         notify.notify("ScreenJarvis", "Claude prompt copied to clipboard.")
+
+    @rumps.clicked("Set API Keys…")
+    def set_api_keys(self, _sender) -> None:
+        stt = notify.prompt_secret(
+            "ScreenJarvis — Speech-to-text key",
+            "Paste an OpenAI (sk-…) or Groq (gsk_…) key. Needed to transcribe your voice.",
+        )
+        if stt is None:  # cancelled
+            return
+        updates: dict[str, str] = {}
+        if stt.startswith("gsk_"):
+            updates["groq_api_key"] = stt
+        elif stt:
+            updates["openai_api_key"] = stt
+        anthropic = notify.prompt_secret(
+            "ScreenJarvis — Anthropic key (optional)",
+            "Paste an Anthropic key (sk-ant-…) to enable smart mode, or leave blank.",
+        )
+        if anthropic:
+            updates["anthropic_api_key"] = anthropic
+        if not updates:
+            notify.notify("ScreenJarvis", "No keys entered — nothing changed.")
+            return
+        save_keys(updates)
+        self._reload_keys()
+        notify.notify("ScreenJarvis", "Keys saved. Hold your key and start talking.")
 
     @rumps.clicked("Open Sessions Folder")
     def open_sessions_folder(self, _sender) -> None:
@@ -127,6 +188,23 @@ class ScreenJarvisApp(rumps.App):
             self._listener.stop()
         self.controller.shutdown(timeout=15)
         rumps.quit_application()
+
+    def _compiled_session(self) -> Path | None:
+        """The latest session that has a transcript.md, or None (with a nudge)."""
+        sdir = self.controller.last_session_dir()
+        if sdir is None or not S.transcript_md_path(sdir).exists():
+            notify.notify("ScreenJarvis", self._no_sessions_message())
+            return None
+        return sdir
+
+    def _reload_keys(self) -> None:
+        # keys are read from the environment at compile time; update the process
+        # env (and the shared cfg) so freshly-saved keys take effect without a
+        # restart. self._cfg is the same object the controller holds.
+        fresh = load_config()
+        for attr in ("openai_api_key", "groq_api_key", "anthropic_api_key"):
+            setattr(self._cfg, attr, getattr(fresh, attr))
+        apply_api_keys(self._cfg)
 
     def _no_sessions_message(self) -> str:
         return f"No sessions yet — hold {self._cfg.hold_key} and start talking."

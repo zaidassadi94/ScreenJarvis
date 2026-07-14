@@ -28,7 +28,15 @@ class Config:
     max_llm_frames: int = 14
     llm_image_width: int = 1024
     sounds: bool = True
-    copy_on_done: str = "claude-prompt"  # claude-prompt | path | off
+    # what release-of-key does with the finished session:
+    #   paste-text     – auto-paste the cleaned narration into the focused app (Wispr-style)
+    #   copy-text      – put that text on the clipboard
+    #   copy-rich      – put text + embedded screenshots on the clipboard (rich editors)
+    #   open-html      – build and open a self-contained HTML document
+    #   claude-prompt  – copy a prompt pointing at transcript.md (paste into Claude Code)
+    #   path | off     – copy the bare path / do nothing
+    on_done: str = "paste-text"
+    image_hosting: str = "embed"  # embed (data URIs) — "upload" is a deferred hook, see DECISIONS.md
     # keys may live in the config file because the menu-bar app is launched
     # outside any shell and inherits no environment variables
     openai_api_key: str = ""
@@ -42,6 +50,9 @@ def load_config() -> Config:
     cfg = Config()
     if CONFIG_PATH.exists():
         data = tomllib.loads(CONFIG_PATH.read_text())
+        # legacy: copy_on_done was the old name; honor it if on_done isn't set
+        if "on_done" not in data and "copy_on_done" in data:
+            data["on_done"] = data["copy_on_done"]
         for key, value in data.items():
             if not hasattr(cfg, key):
                 continue
