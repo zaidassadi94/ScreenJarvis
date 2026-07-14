@@ -168,14 +168,15 @@ The pipeline is platform-agnostic; only the recorder is platform-specific. **Ass
 
 ## 5. Roadmap
 
-### Phase 0 — pipeline spike ✅ built
+### Phase 0 — pipeline spike ✅ built & validated on real hardware
 CLI, no UI polish: run command → hold key → talk & point → release → `transcript.md` opens.
 **Proves/kills the core bet:** does word-time × cursor-position produce figures that match intent?
-**Acceptance (pending — needs a real Mac):** narrate a real code review for 60–90s pointing at 3 things → ≥2 of 3 figures are correctly placed and correctly annotated, with zero manual fixing. The compile pipeline is verified end-to-end against synthetic sessions; live capture (mic/screen/hotkey/permissions) still needs its first real-machine run.
+**Acceptance — met (2026-07-15):** a real ~90s recording on macOS compiled into a document whose figures matched intent (rings landed on the right things; smart mode wrote accurate captions). Core bet confirmed.
 
-### Phase 1 — daily-drivable ✅ built
-Resident menu-bar app (Python/rumps, `sj app`): a global hold-to-talk listener works from anywhere while the icon shows 🎙/🔴/⏳; releases enqueue onto a background compile queue so the next recording can start while the last one compiles; on completion the Claude prompt (or path, per `copy_on_done`) lands on the clipboard and a notification + sound fires. Menu covers open-last-session / copy-prompt / sessions-folder / config-file. `sj app --install-login` installs a LaunchAgent login item (toggleable from the menu), and `sj setup` is an interactive wizard for API keys and preferences — keys can live in the config file because a login-launched app inherits no shell environment.
+### Phase 1 — daily-drivable ✅ built (runs end-to-end on macOS)
+Resident menu-bar app (Python/rumps, `sj app`): a global hold-to-talk listener works from anywhere while the icon shows 🎙/🔴/⏳; releases enqueue onto a background compile queue so the next recording can start while the last one compiles; on completion the Claude prompt (or path, per `copy_on_done`) lands on the clipboard and a notification + sound fires. Menu covers open-last-session / copy-prompt / sessions-folder / config-file. `sj app --install-login` installs a LaunchAgent login item (toggleable from the menu), and `sj setup` is an interactive wizard for API keys and preferences — keys live in the config file (authoritative over stale shell env vars) because a login-launched app inherits no shell environment. First-hardware testing (2026-07-15) flushed out and fixed a run of real bugs: thread-stop crash, silent compile failure, frozen status, incomplete-session error, hidden compile progress, and STT-key-slot/shell-shadow routing.
 **Acceptance (pending):** self-use for every Claude Code session and one written explanation per day for a week, without touching a terminal.
+**Next tuning task:** smart mode over-includes figures (9 for a ~90s clip) — make the understanding pass selective (prompt + optional max-figures cap).
 
 ### Phase 2 — smarts (mostly built)
 ✅ Claude understanding pass (cleanup + captions + missed-reference detection + figure planning); ✅ gesture detection (circle → region highlight, wiggle, dwell); ✅ trail-overlaid frame selection. Remaining: auto-crop to active window with zoom inset; output modes (for-AI / for-blog); redaction blur.
